@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/finngraph/finngraph-api-gateway/internal/gwerr"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/gwerr"
 )
 
 func Recover(logger *slog.Logger) func(http.Handler) http.Handler {

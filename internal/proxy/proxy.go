@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/finngraph/finngraph-api-gateway/internal/config"
-	"github.com/finngraph/finngraph-api-gateway/internal/gwerr"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/config"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/gwerr"
 )
 
 func NewTransport(cfg *config.Config) *http.Transport {
