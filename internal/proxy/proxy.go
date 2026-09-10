@@ -55,11 +55,13 @@ func errorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, 
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
 			logger.Warn("upstream timeout", "path", r.URL.EscapedPath(), "err", err.Error())
+			gwerr.SetTag(r, "upstream_timeout")
 			gwerr.Write(w, http.StatusServiceUnavailable, "UPSTREAM_TIMEOUT",
 				"서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.")
 			return
 		}
 		logger.Warn("upstream unreachable", "path", r.URL.EscapedPath(), "err", err.Error())
+		gwerr.SetTag(r, "upstream_unreachable")
 		gwerr.Write(w, http.StatusServiceUnavailable, "UPSTREAM_UNAVAILABLE",
 			"서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.")
 	}

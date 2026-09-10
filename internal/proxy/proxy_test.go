@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/config"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/gwerr"
 )
 
 func testLogger() *slog.Logger {
@@ -146,8 +147,9 @@ func TestBackend_TimeoutReturns503UpstreamTimeout(t *testing.T) {
 	h := New(target, NewTransport(cfg), testLogger())
 
 	rec := httptest.NewRecorder()
+	req := gwerr.WithTag(httptest.NewRequest("GET", "/api/v1/themes", nil))
 	start := time.Now()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/themes", nil))
+	h.ServeHTTP(rec, req)
 
 	if elapsed := time.Since(start); elapsed > 400*time.Millisecond {
 		t.Errorf("타임아웃 발화 지연: %v (50ms 설정)", elapsed)
@@ -158,6 +160,9 @@ func TestBackend_TimeoutReturns503UpstreamTimeout(t *testing.T) {
 	if !bytes.Contains(rec.Body.Bytes(), []byte(`"UPSTREAM_TIMEOUT"`)) {
 		t.Errorf("body = %s, want UPSTREAM_TIMEOUT code", rec.Body.String())
 	}
+	if got := gwerr.Tag(req); got != "upstream_timeout" {
+		t.Errorf("err tag = %q, want upstream_timeout", got)
+	}
 }
 
 func TestBackend_UnreachableReturns503UpstreamUnavailable(t *testing.T) {
@@ -167,13 +172,17 @@ func TestBackend_UnreachableReturns503UpstreamUnavailable(t *testing.T) {
 
 	h := New(target, NewTransport(testConfig(t)), testLogger())
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/themes", nil))
+	req := gwerr.WithTag(httptest.NewRequest("GET", "/api/v1/themes", nil))
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != 503 {
 		t.Errorf("status = %d, want 503", rec.Code)
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte(`"UPSTREAM_UNAVAILABLE"`)) {
 		t.Errorf("body = %s, want UPSTREAM_UNAVAILABLE code", rec.Body.String())
+	}
+	if got := gwerr.Tag(req); got != "upstream_unreachable" {
+		t.Errorf("err tag = %q, want upstream_unreachable", got)
 	}
 }
 
