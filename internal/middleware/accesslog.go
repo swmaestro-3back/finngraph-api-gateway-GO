@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/finngraph/finngraph-api-gateway/internal/gwerr"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/gwerr"
 )
 
 type statusWriter struct {

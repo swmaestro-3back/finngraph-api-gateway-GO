@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/finngraph/finngraph-api-gateway/internal/gwerr"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/gwerr"
 )
 
 func captureLog(t *testing.T, inner http.HandlerFunc, req *http.Request) map[string]any {

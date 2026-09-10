@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/finngraph/finngraph-api-gateway/internal/config"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/config"
 )
 
 func testLogger() *slog.Logger {
