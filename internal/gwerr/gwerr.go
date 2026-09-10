@@ -1,9 +1,29 @@
 package gwerr
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 )
+
+type tagKey struct{}
+
+func WithTag(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), tagKey{}, new(string)))
+}
+
+func SetTag(r *http.Request, tag string) {
+	if p, ok := r.Context().Value(tagKey{}).(*string); ok {
+		*p = tag
+	}
+}
+
+func Tag(r *http.Request) string {
+	if p, ok := r.Context().Value(tagKey{}).(*string); ok {
+		return *p
+	}
+	return ""
+}
 
 type envelope struct {
 	Error body `json:"error"`

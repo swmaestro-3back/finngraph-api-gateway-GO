@@ -6,6 +6,28 @@ import (
 	"testing"
 )
 
+func TestTag_RoundTrip(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r = WithTag(r)
+
+	if got := Tag(r); got != "" {
+		t.Errorf("초기 Tag = %q, want 빈 문자열", got)
+	}
+	SetTag(r, "rate_limited")
+	if got := Tag(r); got != "rate_limited" {
+		t.Errorf("Tag = %q, want rate_limited", got)
+	}
+}
+
+func TestTag_WithoutHolderIsNoop(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+
+	SetTag(r, "upstream_timeout")
+	if got := Tag(r); got != "" {
+		t.Errorf("홀더 없는 Tag = %q, want 빈 문자열", got)
+	}
+}
+
 func TestWrite_EnvelopeShape(t *testing.T) {
 	rec := httptest.NewRecorder()
 	Write(rec, 503, "UPSTREAM_TIMEOUT", "서버 응답이 지연되고 있습니다.")
