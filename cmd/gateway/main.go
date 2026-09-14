@@ -73,8 +73,8 @@ func main() {
 func buildHandler(cfg *config.Config, logger *slog.Logger) http.Handler {
 	tr := proxy.NewTransport(cfg)
 	rt := router.New(
-		proxy.New(cfg.BackendURL, tr, logger),
-		proxy.NewKG(cfg.KGURL, tr, logger),
+		proxy.New(cfg.BackendURL, tr, logger, middleware.ClientIP),
+		proxy.NewKG(cfg.KGURL, tr, logger, middleware.ClientIP),
 		health.Handler(),
 	)
 
@@ -83,7 +83,8 @@ func buildHandler(cfg *config.Config, logger *slog.Logger) http.Handler {
 			middleware.RequestID()(
 				middleware.AccessLog(logger)(
 					middleware.BodyLimit(1 << 20)(
-						middleware.RateLimit(cfg, router.Classify)(rt))))))
+						middleware.RateLimit(cfg, router.Classify)(
+							middleware.Deadline(cfg.UpstreamTimeout)(rt)))))))
 }
 
 func probeURL(listenAddr string) string {
