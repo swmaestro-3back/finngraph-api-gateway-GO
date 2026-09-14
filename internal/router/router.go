@@ -10,6 +10,10 @@ import (
 
 func New(backend, kg, healthz http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hasDotSegment(r.URL.Path) {
+			blocked(w, r)
+			return
+		}
 		p := r.URL.EscapedPath()
 		switch {
 		case p == "/healthz":
@@ -43,6 +47,15 @@ func Classify(r *http.Request) middleware.Class {
 	default:
 		return middleware.ClassGeneral
 	}
+}
+
+func hasDotSegment(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "." || seg == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func blocked(w http.ResponseWriter, r *http.Request) {
