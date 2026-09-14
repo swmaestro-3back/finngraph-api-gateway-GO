@@ -37,6 +37,30 @@ func TestLoad_Defaults(t *testing.T) {
 	if !cfg.TrustProxy {
 		t.Error("TrustProxy = false, want true")
 	}
+	if cfg.ClientIPSource != "auto" {
+		t.Errorf("ClientIPSource = %q, want auto", cfg.ClientIPSource)
+	}
+}
+
+func TestLoad_ClientIPSource(t *testing.T) {
+	for _, valid := range []string{"auto", "cloudfront", "real-ip", "xff", "socket"} {
+		t.Run("valid_"+valid, func(t *testing.T) {
+			t.Setenv("GW_CLIENT_IP_SOURCE", valid)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load(): %v", err)
+			}
+			if cfg.ClientIPSource != valid {
+				t.Errorf("ClientIPSource = %q, want %q", cfg.ClientIPSource, valid)
+			}
+		})
+	}
+	t.Run("invalid_fails_closed", func(t *testing.T) {
+		t.Setenv("GW_CLIENT_IP_SOURCE", "nginx")
+		if _, err := Load(); err == nil {
+			t.Error("want error for unknown source")
+		}
+	})
 }
 
 func TestLoad_Overrides(t *testing.T) {
