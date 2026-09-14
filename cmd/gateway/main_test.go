@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/config"
 )
@@ -150,6 +151,36 @@ func TestStack_BodyLimitReturns413(t *testing.T) {
 
 	if rec.Code != 413 {
 		t.Errorf("2MiB body = %d, want 413", rec.Code)
+	}
+}
+
+func TestStack_DeadlineCapsConnSlotWait(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+	}))
+	t.Cleanup(slow.Close)
+
+	cfg := testConfig(t, slow.URL, slow.URL)
+	cfg.UpstreamTimeout = 200 * time.Millisecond
+	cfg.MaxConnsPerHost = 1
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := buildHandler(cfg, logger)
+
+	go func() {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/v1/themes", nil))
+	}()
+	time.Sleep(30 * time.Millisecond)
+
+	rec := httptest.NewRecorder()
+	start := time.Now()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/stocks", nil))
+	elapsed := time.Since(start)
+
+	if rec.Code != 503 {
+		t.Errorf("슬롯 대기 요청 status = %d, want 503", rec.Code)
+	}
+	if elapsed > 350*time.Millisecond {
+		t.Errorf("슬롯 대기 요청 소요 %v — 데드라인(200ms)이 대기를 못 끊음", elapsed)
 	}
 }
 
