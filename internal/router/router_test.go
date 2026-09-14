@@ -110,21 +110,32 @@ func TestRouter_ActuatorBlocked(t *testing.T) {
 	}
 }
 
-func TestRouter_TraversalInsideAPIPassesToBackendUnnormalized(t *testing.T) {
-	var gotURI string
-	c := &called{}
-	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c.name = "backend"
-		gotURI = r.URL.EscapedPath()
-	})
-	h := New(backend, mark("kg", c), mark("healthz", c))
-
-	rec, _ := send(h, "GET", "/api/../actuator/health")
-	if c.name != "backend" {
-		t.Fatalf("handler=%q status=%d, want backend (정규화 없이 통과 → 업스트림이 거부)", c.name, rec.Code)
+func TestRouter_DotSegmentsRejected(t *testing.T) {
+	h, c := newTestRouter()
+	for _, path := range []string{
+		"/api/../actuator/health",
+		"/api/%2e%2e/actuator/health",
+		"/api/v1/./themes",
+		"/kg/../actuator/health",
+	} {
+		c.name = ""
+		rec, req := send(h, "GET", path)
+		if rec.Code != 404 {
+			t.Errorf("%s → status=%d, want 404 (dot-segment 거부)", path, rec.Code)
+		}
+		if c.name != "" {
+			t.Errorf("%s → 핸들러 %q 호출됨, want 미호출", path, c.name)
+		}
+		if gwerr.Tag(req) != "blocked_path" {
+			t.Errorf("%s → tag=%q, want blocked_path", path, gwerr.Tag(req))
+		}
 	}
-	if gotURI != "/api/../actuator/health" {
-		t.Errorf("backend 수신 경로 = %q, want 무정규화 원문", gotURI)
+}
+
+func TestRouter_DotsInsideSegmentStillPass(t *testing.T) {
+	h, c := newTestRouter()
+	if rec, _ := send(h, "GET", "/api/v1/themes/a..b"); rec.Code != 200 || c.name != "backend" {
+		t.Errorf("세그먼트 내부의 점(a..b) → handler=%q status=%d, want backend 200 (오탐 금지)", c.name, rec.Code)
 	}
 }
 

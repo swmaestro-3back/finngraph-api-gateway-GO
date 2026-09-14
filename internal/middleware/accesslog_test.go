@@ -15,7 +15,7 @@ func captureLog(t *testing.T, inner http.HandlerFunc, req *http.Request) map[str
 	t.Helper()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	chain := RequestID()(RealIP(true)(AccessLog(logger)(inner)))
+	chain := RequestID()(RealIP(true, "auto")(AccessLog(logger)(inner)))
 	chain.ServeHTTP(httptest.NewRecorder(), req)
 
 	var entry map[string]any

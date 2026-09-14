@@ -28,6 +28,8 @@ func testConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
+func testClientIP(*http.Request) string { return "203.0.113.9" }
+
 func newTestProxy(t *testing.T, stub http.HandlerFunc) (http.Handler, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(stub)
@@ -36,7 +38,7 @@ func newTestProxy(t *testing.T, stub http.HandlerFunc) (http.Handler, *httptest.
 	if err != nil {
 		t.Fatalf("url.Parse(%q): %v", srv.URL, err)
 	}
-	return New(target, NewTransport(testConfig(t)), testLogger()), srv
+	return New(target, NewTransport(testConfig(t)), testLogger(), testClientIP), srv
 }
 
 func TestBackend_PreservesPathAndQuery(t *testing.T) {
@@ -144,7 +146,7 @@ func TestBackend_TimeoutReturns503UpstreamTimeout(t *testing.T) {
 
 	cfg := testConfig(t)
 	cfg.UpstreamTimeout = 50 * time.Millisecond
-	h := New(target, NewTransport(cfg), testLogger())
+	h := New(target, NewTransport(cfg), testLogger(), testClientIP)
 
 	rec := httptest.NewRecorder()
 	req := gwerr.WithTag(httptest.NewRequest("GET", "/api/v1/themes", nil))
@@ -170,7 +172,7 @@ func TestBackend_UnreachableReturns503UpstreamUnavailable(t *testing.T) {
 	target, _ := url.Parse(stub.URL)
 	stub.Close()
 
-	h := New(target, NewTransport(testConfig(t)), testLogger())
+	h := New(target, NewTransport(testConfig(t)), testLogger(), testClientIP)
 	rec := httptest.NewRecorder()
 	req := gwerr.WithTag(httptest.NewRequest("GET", "/api/v1/themes", nil))
 	h.ServeHTTP(rec, req)
@@ -186,33 +188,44 @@ func TestBackend_UnreachableReturns503UpstreamUnavailable(t *testing.T) {
 	}
 }
 
-func TestBackend_PreservesInboundXFFAndHost(t *testing.T) {
-	var gotXFF, gotRealIP, gotProto, gotHost string
+func TestBackend_RewritesIdentityHeaders(t *testing.T) {
+	var gotXFF, gotRealIP, gotProto, gotHost []string
+	var hasXFH, hasViewer bool
 	h, _ := newTestProxy(t, func(w http.ResponseWriter, r *http.Request) {
-		gotXFF = r.Header.Get("X-Forwarded-For")
-		gotRealIP = r.Header.Get("X-Real-IP")
-		gotProto = r.Header.Get("X-Forwarded-Proto")
-		gotHost = r.Host
+		gotXFF = r.Header.Values("X-Forwarded-For")
+		gotRealIP = r.Header.Values("X-Real-IP")
+		gotProto = r.Header.Values("X-Forwarded-Proto")
+		gotHost = []string{r.Host}
+		_, hasXFH = r.Header["X-Forwarded-Host"]
+		_, hasViewer = r.Header["Cloudfront-Viewer-Address"]
 	})
 
 	req := httptest.NewRequest("GET", "/api/v1/themes", nil)
-	req.Host = "finngraph.example.com"
-	req.Header.Set("X-Forwarded-For", "203.0.113.9")
-	req.Header.Set("X-Real-IP", "203.0.113.9")
+	req.Host = "api.dev.finngraph.com"
+	req.Header.Set("X-Forwarded-For", "9.9.9.9, 8.8.8.8")
+	req.Header.Set("X-Real-IP", "7.7.7.7")
+	req.Header.Set("CloudFront-Viewer-Address", "6.6.6.6:1234")
+	req.Header.Set("X-Forwarded-Host", "evil.example.com")
 	req.Header.Set("X-Forwarded-Proto", "https")
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
-	if gotXFF != "203.0.113.9" {
-		t.Errorf("X-Forwarded-For = %q, want 무변경 통과 (Rewrite 모드 기본 제거 미대응?)", gotXFF)
+	if len(gotXFF) != 1 || gotXFF[0] != "203.0.113.9" {
+		t.Errorf("X-Forwarded-For = %v, want 게이트웨이 확정 IP 단일값 (인바운드 위조값 폐기)", gotXFF)
 	}
-	if gotRealIP != "203.0.113.9" {
-		t.Errorf("X-Real-IP = %q, want 통과", gotRealIP)
+	if len(gotRealIP) != 1 || gotRealIP[0] != "203.0.113.9" {
+		t.Errorf("X-Real-IP = %v, want 게이트웨이 확정 IP (인바운드 값 덮어씀)", gotRealIP)
 	}
-	if gotProto != "https" {
-		t.Errorf("X-Forwarded-Proto = %q, want 통과", gotProto)
+	if hasViewer {
+		t.Error("CloudFront-Viewer-Address가 업스트림에 전파됨 — 제거돼야 함")
 	}
-	if gotHost != "finngraph.example.com" {
-		t.Errorf("Host = %q, want 인바운드 보존", gotHost)
+	if hasXFH {
+		t.Error("X-Forwarded-Host가 업스트림에 전파됨 — 공격자 제어 값, 제거돼야 함")
+	}
+	if len(gotProto) != 1 || gotProto[0] != "https" {
+		t.Errorf("X-Forwarded-Proto = %v, want 통과 (신뢰 엣지가 설정)", gotProto)
+	}
+	if gotHost[0] != "api.dev.finngraph.com" {
+		t.Errorf("Host = %q, want 인바운드 보존", gotHost[0])
 	}
 }
 
@@ -224,7 +237,7 @@ func TestKG_StripsPrefixPreservingEncoding(t *testing.T) {
 	t.Cleanup(stub.Close)
 	target, _ := url.Parse(stub.URL)
 
-	h := NewKG(target, NewTransport(testConfig(t)), testLogger())
+	h := NewKG(target, NewTransport(testConfig(t)), testLogger(), testClientIP)
 	req := httptest.NewRequest("GET", "/kg/api/v1/themes/%EC%9D%B4%EC%B0%A8%EC%A0%84%EC%A7%80?hop=2", nil)
 	h.ServeHTTP(httptest.NewRecorder(), req)
 

@@ -25,15 +25,26 @@ func NewTransport(cfg *config.Config) *http.Transport {
 	}
 }
 
-func New(target *url.URL, tr http.RoundTripper, logger *slog.Logger) http.Handler {
+func New(target *url.URL, tr http.RoundTripper, logger *slog.Logger, clientIP func(*http.Request) string) http.Handler {
+	if clientIP == nil {
+		clientIP = func(r *http.Request) string {
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				return r.RemoteAddr
+			}
+			return host
+		}
+	}
 	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
 			pr.Out.Host = pr.In.Host
-			for _, h := range []string{"X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto"} {
-				if v, ok := pr.In.Header[h]; ok {
-					pr.Out.Header[h] = v
-				}
+			ip := clientIP(pr.In)
+			pr.Out.Header.Set("X-Forwarded-For", ip)
+			pr.Out.Header.Set("X-Real-IP", ip)
+			pr.Out.Header.Del("CloudFront-Viewer-Address")
+			if v, ok := pr.In.Header["X-Forwarded-Proto"]; ok {
+				pr.Out.Header["X-Forwarded-Proto"] = v
 			}
 		},
 		Transport:     tr,
@@ -42,8 +53,8 @@ func New(target *url.URL, tr http.RoundTripper, logger *slog.Logger) http.Handle
 	}
 }
 
-func NewKG(target *url.URL, tr http.RoundTripper, logger *slog.Logger) http.Handler {
-	return http.StripPrefix("/kg", New(target, tr, logger))
+func NewKG(target *url.URL, tr http.RoundTripper, logger *slog.Logger, clientIP func(*http.Request) string) http.Handler {
+	return http.StripPrefix("/kg", New(target, tr, logger, clientIP))
 }
 
 func errorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {

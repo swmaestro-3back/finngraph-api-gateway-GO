@@ -21,6 +21,7 @@ type Config struct {
 	RateAuthRPM      float64
 	RateAuthBurst    int
 	TrustProxy       bool
+	ClientIPSource   string
 	LogLevel         slog.Level
 }
 
@@ -58,6 +59,10 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.TrustProxy, err = parseBool("GW_TRUST_PROXY", true); err != nil {
+		return nil, err
+	}
+	if cfg.ClientIPSource, err = parseEnum("GW_CLIENT_IP_SOURCE", "auto",
+		[]string{"auto", "cloudfront", "real-ip", "xff", "socket"}); err != nil {
 		return nil, err
 	}
 	if cfg.LogLevel, err = parseLogLevel("GW_LOG_LEVEL", slog.LevelInfo); err != nil {
@@ -131,6 +136,16 @@ func parsePositiveFloat(key string, fallback float64) (float64, error) {
 		return 0, fmt.Errorf("%s: 양수 필요 %q", key, raw)
 	}
 	return f, nil
+}
+
+func parseEnum(key, fallback string, allowed []string) (string, error) {
+	raw := getenv(key, fallback)
+	for _, a := range allowed {
+		if raw == a {
+			return raw, nil
+		}
+	}
+	return "", fmt.Errorf("%s: 허용되지 않은 값 %q (허용: %v)", key, raw, allowed)
 }
 
 func parseBool(key string, fallback bool) (bool, error) {
