@@ -159,6 +159,28 @@ func TestRealIP_SourceXFF_IgnoresForgedHeaders(t *testing.T) {
 	}
 }
 
+func TestRealIP_SourceXFF_DuplicateFieldsUseLastFieldLastEntry(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "172.18.0.5:41234"
+	req.Header.Add("X-Forwarded-For", "6.6.6.6, 7.7.7.7")
+	req.Header.Add("X-Forwarded-For", "8.8.8.8, 203.0.113.80")
+
+	if got := clientIPSeen(RealIP(true, "xff"), req); got != "203.0.113.80" {
+		t.Errorf("ClientIP = %q, want 마지막 필드의 최후미 (첫 필드만 읽으면 우회됨)", got)
+	}
+}
+
+func TestRealIP_AutoXFF_DuplicateFieldsUseLastFieldLastEntry(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "172.18.0.5:41234"
+	req.Header.Add("X-Forwarded-For", "6.6.6.6")
+	req.Header.Add("X-Forwarded-For", "203.0.113.81")
+
+	if got := clientIPSeen(RealIP(true, "auto"), req); got != "203.0.113.81" {
+		t.Errorf("ClientIP = %q, want 마지막 필드 값", got)
+	}
+}
+
 func TestRealIP_SourceXFF_AbsentFallsBackToSocket(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "172.18.0.5:41234"

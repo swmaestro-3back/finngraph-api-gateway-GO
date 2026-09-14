@@ -32,7 +32,7 @@ func resolveClientIP(r *http.Request, trustProxy bool, source string) string {
 			return v
 		}
 	case "xff":
-		if v := xffLast(r.Header.Get("X-Forwarded-For")); v != "" {
+		if v := xffLast(joinedXFF(r)); v != "" {
 			return v
 		}
 	case "socket":
@@ -43,7 +43,7 @@ func resolveClientIP(r *http.Request, trustProxy bool, source string) string {
 		if v := r.Header.Get("X-Real-IP"); v != "" {
 			return v
 		}
-		if v := xffLast(r.Header.Get("X-Forwarded-For")); v != "" {
+		if v := xffLast(joinedXFF(r)); v != "" {
 			return v
 		}
 	}
@@ -70,6 +70,10 @@ func viewerHost(v string) string {
 		}
 	}
 	return ""
+}
+
+func joinedXFF(r *http.Request) string {
+	return strings.Join(r.Header.Values("X-Forwarded-For"), ",")
 }
 
 func xffLast(v string) string {
