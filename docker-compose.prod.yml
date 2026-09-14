@@ -9,9 +9,10 @@ services:
       - "${GW_BIND:-0.0.0.0:8090}:8080"
     env_file:
       - path: .env
-        required: false
+        required: true
     environment:
       TZ: Asia/Seoul
+      GW_CLIENT_IP_SOURCE: xff
     healthcheck:
       test: ["CMD", "/gateway", "-healthcheck"]
       interval: 10s
