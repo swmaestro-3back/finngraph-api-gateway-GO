@@ -79,7 +79,7 @@ func buildHandler(cfg *config.Config, logger *slog.Logger) http.Handler {
 	)
 
 	return middleware.Recover(logger)(
-		middleware.RealIP(cfg.TrustProxy)(
+		middleware.RealIP(cfg.TrustProxy, cfg.ClientIPSource)(
 			middleware.RequestID()(
 				middleware.AccessLog(logger)(
 					middleware.BodyLimit(1 << 20)(

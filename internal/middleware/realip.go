@@ -9,20 +9,45 @@ import (
 
 type clientIPKey struct{}
 
-func RealIP(trustProxy bool) func(http.Handler) http.Handler {
+func RealIP(trustProxy bool, source string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := remoteHost(r)
-			if trustProxy {
-				if v := viewerHost(r.Header.Get("CloudFront-Viewer-Address")); v != "" {
-					ip = v
-				} else if v := r.Header.Get("X-Real-IP"); v != "" {
-					ip = v
-				}
-			}
+			ip := resolveClientIP(r, trustProxy, source)
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), clientIPKey{}, ip)))
 		})
 	}
+}
+
+func resolveClientIP(r *http.Request, trustProxy bool, source string) string {
+	if !trustProxy {
+		return remoteHost(r)
+	}
+	switch source {
+	case "cloudfront":
+		if v := viewerHost(r.Header.Get("CloudFront-Viewer-Address")); v != "" {
+			return v
+		}
+	case "real-ip":
+		if v := r.Header.Get("X-Real-IP"); v != "" {
+			return v
+		}
+	case "xff":
+		if v := xffLast(r.Header.Get("X-Forwarded-For")); v != "" {
+			return v
+		}
+	case "socket":
+	default:
+		if v := viewerHost(r.Header.Get("CloudFront-Viewer-Address")); v != "" {
+			return v
+		}
+		if v := r.Header.Get("X-Real-IP"); v != "" {
+			return v
+		}
+		if v := xffLast(r.Header.Get("X-Forwarded-For")); v != "" {
+			return v
+		}
+	}
+	return remoteHost(r)
 }
 
 func ClientIP(r *http.Request) string {
@@ -45,6 +70,21 @@ func viewerHost(v string) string {
 		}
 	}
 	return ""
+}
+
+func xffLast(v string) string {
+	if v == "" {
+		return ""
+	}
+	parts := strings.Split(v, ",")
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last == "" {
+		return ""
+	}
+	if net.ParseIP(last) != nil {
+		return last
+	}
+	return viewerHost(last)
 }
 
 func remoteHost(r *http.Request) string {

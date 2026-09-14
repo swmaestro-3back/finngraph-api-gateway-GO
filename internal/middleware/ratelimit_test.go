@@ -42,7 +42,7 @@ func rlChain(cfg *config.Config) http.Handler {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	})
-	return RealIP(true)(RateLimit(cfg, pathClassifier)(ok))
+	return RealIP(true, "auto")(RateLimit(cfg, pathClassifier)(ok))
 }
 
 func fire(h http.Handler, method, path, ip string) *httptest.ResponseRecorder {
