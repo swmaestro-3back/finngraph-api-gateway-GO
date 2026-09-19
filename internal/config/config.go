@@ -22,6 +22,7 @@ type Config struct {
 	RateAuthBurst    int
 	TrustProxy       bool
 	ClientIPSource   string
+	RedisAddr        string
 	LogLevel         slog.Level
 }
 
@@ -65,6 +66,7 @@ func Load() (*Config, error) {
 		[]string{"auto", "cloudfront", "real-ip", "xff", "socket"}); err != nil {
 		return nil, err
 	}
+	cfg.RedisAddr = os.Getenv("GW_REDIS_ADDR")
 	if cfg.LogLevel, err = parseLogLevel("GW_LOG_LEVEL", slog.LevelInfo); err != nil {
 		return nil, err
 	}

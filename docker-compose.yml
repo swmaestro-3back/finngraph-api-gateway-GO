@@ -27,6 +27,19 @@ services:
     networks:
       - etl
       - backend
+      - gwnet
+
+  gw-redis:
+    image: redis:7-alpine
+    container_name: finngraph-gateway-redis
+    networks:
+      - gwnet
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
 
 networks:
   etl:
@@ -35,3 +48,4 @@ networks:
   backend:
     external: true
     name: finngraph-backend_default
+  gwnet: {}
