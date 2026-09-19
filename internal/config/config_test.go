@@ -40,6 +40,20 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.ClientIPSource != "auto" {
 		t.Errorf("ClientIPSource = %q, want auto", cfg.ClientIPSource)
 	}
+	if cfg.RedisAddr != "" {
+		t.Errorf("RedisAddr = %q, want 빈 값 (미설정 = 인메모리)", cfg.RedisAddr)
+	}
+}
+
+func TestLoad_RedisAddr(t *testing.T) {
+	t.Setenv("GW_REDIS_ADDR", "gw-redis:6379")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.RedisAddr != "gw-redis:6379" {
+		t.Errorf("RedisAddr = %q, want gw-redis:6379", cfg.RedisAddr)
+	}
 }
 
 func TestLoad_ClientIPSource(t *testing.T) {
