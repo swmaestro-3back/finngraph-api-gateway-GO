@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"context"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/time/rate"
 
 	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/config"
@@ -20,6 +23,10 @@ const (
 	ClassGeneral
 	ClassAuth
 )
+
+type allower interface {
+	allow(ip string) (bool, int)
+}
 
 type poolEntry struct {
 	lim      *rate.Limiter
@@ -49,6 +56,18 @@ func (p *pool) get(ip string) *rate.Limiter {
 	return e.lim
 }
 
+func (p *pool) allow(ip string) (bool, int) {
+	res := p.get(ip).Reserve()
+	if !res.OK() {
+		return false, 1
+	}
+	if delay := res.Delay(); delay > 0 {
+		res.Cancel()
+		return false, int(math.Ceil(delay.Seconds()))
+	}
+	return true, 0
+}
+
 func (p *pool) sweep(idle time.Duration) {
 	cutoff := time.Now().Add(-idle)
 	p.mu.Lock()
@@ -67,15 +86,80 @@ func (p *pool) janitor(interval, idle time.Duration) {
 	}
 }
 
-func RateLimit(cfg *config.Config, classify func(*http.Request) Class) func(http.Handler) http.Handler {
-	general := newPool(rate.Limit(cfg.RateGeneralRPS), cfg.RateGeneralBurst)
-	auth := newPool(rate.Limit(cfg.RateAuthRPM/60), cfg.RateAuthBurst)
-	go general.janitor(time.Minute, 10*time.Minute)
-	go auth.janitor(time.Minute, 10*time.Minute)
+var tokenBucketScript = redis.NewScript(`
+local data = redis.call('HMGET', KEYS[1], 'tokens', 'ts')
+local rate = tonumber(ARGV[1])
+local burst = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local tokens = tonumber(data[1])
+local ts = tonumber(data[2])
+if tokens == nil then
+  tokens = burst
+  ts = now
+end
+tokens = math.min(burst, tokens + math.max(0, now - ts) / 1000000 * rate)
+local allowed = 0
+local retry = 0
+if tokens >= 1 then
+  tokens = tokens - 1
+  allowed = 1
+else
+  retry = math.ceil((1 - tokens) / rate)
+end
+redis.call('HSET', KEYS[1], 'tokens', tokens, 'ts', now)
+redis.call('EXPIRE', KEYS[1], 600)
+return {allowed, retry}
+`)
+
+type redisPool struct {
+	client *redis.Client
+	prefix string
+	rate   float64
+	burst  int
+	logger *slog.Logger
+}
+
+func (p *redisPool) allow(ip string) (bool, int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	res, err := tokenBucketScript.Run(ctx, p.client, []string{p.prefix + ip},
+		p.rate, p.burst, time.Now().UnixMicro()).Int64Slice()
+	if err != nil || len(res) != 2 {
+		p.logger.Warn("rate limit fail-open", "prefix", p.prefix, "err", errString(err))
+		return true, 0
+	}
+	return res[0] == 1, int(res[1])
+}
+
+func errString(err error) string {
+	if err == nil {
+		return "malformed script result"
+	}
+	return err.Error()
+}
+
+func RateLimit(cfg *config.Config, logger *slog.Logger, classify func(*http.Request) Class) func(http.Handler) http.Handler {
+	var general, auth allower
+	if cfg.RedisAddr != "" {
+		client := redis.NewClient(&redis.Options{
+			Addr:         cfg.RedisAddr,
+			DialTimeout:  200 * time.Millisecond,
+			ReadTimeout:  200 * time.Millisecond,
+			WriteTimeout: 200 * time.Millisecond,
+		})
+		general = &redisPool{client: client, prefix: "gw:rl:general:", rate: cfg.RateGeneralRPS, burst: cfg.RateGeneralBurst, logger: logger}
+		auth = &redisPool{client: client, prefix: "gw:rl:auth:", rate: cfg.RateAuthRPM / 60, burst: cfg.RateAuthBurst, logger: logger}
+	} else {
+		gp := newPool(rate.Limit(cfg.RateGeneralRPS), cfg.RateGeneralBurst)
+		ap := newPool(rate.Limit(cfg.RateAuthRPM/60), cfg.RateAuthBurst)
+		go gp.janitor(time.Minute, 10*time.Minute)
+		go ap.janitor(time.Minute, 10*time.Minute)
+		general, auth = gp, ap
+	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var p *pool
+			var p allower
 			switch classify(r) {
 			case ClassGeneral:
 				p = general
@@ -86,14 +170,9 @@ func RateLimit(cfg *config.Config, classify func(*http.Request) Class) func(http
 				return
 			}
 
-			res := p.get(ClientIP(r)).Reserve()
-			if !res.OK() {
-				reject(w, r, 1)
-				return
-			}
-			if delay := res.Delay(); delay > 0 {
-				res.Cancel()
-				reject(w, r, int(math.Ceil(delay.Seconds())))
+			ok, retryAfter := p.allow(ClientIP(r))
+			if !ok {
+				reject(w, r, retryAfter)
 				return
 			}
 			next.ServeHTTP(w, r)
