@@ -9,10 +9,12 @@ services:
       - "${GW_BIND:-0.0.0.0:8090}:8080"
     env_file:
       - path: .env
-        required: true
+        required: false
     environment:
       TZ: Asia/Seoul
-      GW_CLIENT_IP_SOURCE: xff
+      GW_CLIENT_IP_SOURCE: (백엔드 개발자에게 연락)
+      GW_BACKEND_URL: ${GW_BACKEND_URL:?backend 사설 주소 필요 (.env 또는 셸/compose에 지정)}
+      GW_KG_URL: ${GW_KG_URL:?kg 사설 주소 필요 (.env 또는 셸/compose에 지정)}
     healthcheck:
       test: ["CMD", "/gateway", "-healthcheck"]
       interval: 10s
