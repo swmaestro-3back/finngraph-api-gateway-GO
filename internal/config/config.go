@@ -1,6 +1,10 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -23,6 +27,7 @@ type Config struct {
 	TrustProxy       bool
 	ClientIPSource   string
 	RedisAddr        string
+	JWTPublicKey     *ecdsa.PublicKey
 	LogLevel         slog.Level
 }
 
@@ -67,6 +72,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.RedisAddr = os.Getenv("GW_REDIS_ADDR")
+	if cfg.JWTPublicKey, err = parseECPublicKey("GW_JWT_PUBLIC_KEY"); err != nil {
+		return nil, err
+	}
 	if cfg.LogLevel, err = parseLogLevel("GW_LOG_LEVEL", slog.LevelInfo); err != nil {
 		return nil, err
 	}
@@ -138,6 +146,29 @@ func parsePositiveFloat(key string, fallback float64) (float64, error) {
 		return 0, fmt.Errorf("%s: 양수 필요 %q", key, raw)
 	}
 	return f, nil
+}
+
+func parseECPublicKey(key string) (*ecdsa.PublicKey, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return nil, nil
+	}
+	der, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: base64 디코딩 실패: %w", key, err)
+	}
+	parsed, err := x509.ParsePKIXPublicKey(der)
+	if err != nil {
+		return nil, fmt.Errorf("%s: SPKI 파싱 실패: %w", key, err)
+	}
+	pub, ok := parsed.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("%s: EC 공개키 필요 (실제: %T)", key, parsed)
+	}
+	if pub.Curve != elliptic.P256() {
+		return nil, fmt.Errorf("%s: P-256 곡선 필요 (실제: %s)", key, pub.Curve.Params().Name)
+	}
+	return pub, nil
 }
 
 func parseEnum(key, fallback string, allowed []string) (string, error) {
