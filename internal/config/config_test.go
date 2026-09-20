@@ -108,6 +108,67 @@ func TestLoad_JWTPublicKey(t *testing.T) {
 	}
 }
 
+func TestLoad_CORSOrigins(t *testing.T) {
+	t.Run("미설정이면 nil (CORS 비활성)", func(t *testing.T) {
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load(): %v", err)
+		}
+		if cfg.CORSOrigins != nil {
+			t.Errorf("CORSOrigins = %v, want nil", cfg.CORSOrigins)
+		}
+	})
+
+	t.Run("단일 origin", func(t *testing.T) {
+		t.Setenv("GW_CORS_ORIGINS", "https://app.example.com")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load(): %v", err)
+		}
+		if len(cfg.CORSOrigins) != 1 || cfg.CORSOrigins[0] != "https://app.example.com" {
+			t.Errorf("CORSOrigins = %v", cfg.CORSOrigins)
+		}
+	})
+
+	t.Run("콤마 리스트 + 공백 트림", func(t *testing.T) {
+		t.Setenv("GW_CORS_ORIGINS", "https://app.example.com, http://localhost:5173")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load(): %v", err)
+		}
+		want := []string{"https://app.example.com", "http://localhost:5173"}
+		if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[0] != want[0] || cfg.CORSOrigins[1] != want[1] {
+			t.Errorf("CORSOrigins = %v, want %v", cfg.CORSOrigins, want)
+		}
+	})
+
+	t.Run("대문자는 소문자로 정규화", func(t *testing.T) {
+		t.Setenv("GW_CORS_ORIGINS", "HTTPS://APP.EXAMPLE.COM")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load(): %v", err)
+		}
+		if len(cfg.CORSOrigins) != 1 || cfg.CORSOrigins[0] != "https://app.example.com" {
+			t.Errorf("CORSOrigins = %v", cfg.CORSOrigins)
+		}
+	})
+
+	for name, val := range map[string]string{
+		"scheme 누락":      "app.example.com",
+		"trailing slash": "https://app.example.com/",
+		"와일드카드":          "*",
+		"빈 항목":           "https://a.com,,https://b.com",
+		"쿼리 포함":          "https://app.example.com?x=1",
+	} {
+		t.Run("fail-closed: "+name, func(t *testing.T) {
+			t.Setenv("GW_CORS_ORIGINS", val)
+			if _, err := Load(); err == nil {
+				t.Errorf("GW_CORS_ORIGINS=%q: want error, got nil", val)
+			}
+		})
+	}
+}
+
 func TestLoad_RedisAddr(t *testing.T) {
 	t.Setenv("GW_REDIS_ADDR", "gw-redis:6379")
 	cfg, err := Load()
