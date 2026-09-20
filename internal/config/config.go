@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type Config struct {
 	ClientIPSource   string
 	RedisAddr        string
 	JWTPublicKey     *ecdsa.PublicKey
+	CORSOrigins      []string
 	LogLevel         slog.Level
 }
 
@@ -73,6 +75,9 @@ func Load() (*Config, error) {
 	}
 	cfg.RedisAddr = os.Getenv("GW_REDIS_ADDR")
 	if cfg.JWTPublicKey, err = parseECPublicKey("GW_JWT_PUBLIC_KEY"); err != nil {
+		return nil, err
+	}
+	if cfg.CORSOrigins, err = parseCORSOrigins("GW_CORS_ORIGINS"); err != nil {
 		return nil, err
 	}
 	if cfg.LogLevel, err = parseLogLevel("GW_LOG_LEVEL", slog.LevelInfo); err != nil {
@@ -169,6 +174,35 @@ func parseECPublicKey(key string) (*ecdsa.PublicKey, error) {
 		return nil, fmt.Errorf("%s: P-256 곡선 필요 (실제: %s)", key, pub.Curve.Params().Name)
 	}
 	return pub, nil
+}
+
+func parseCORSOrigins(key string) ([]string, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return nil, nil
+	}
+	var origins []string
+	for _, item := range strings.Split(raw, ",") {
+		origin := strings.ToLower(strings.TrimSpace(item))
+		if origin == "" {
+			return nil, fmt.Errorf("%s: 빈 origin 항목 %q", key, raw)
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return nil, fmt.Errorf("%s: origin 파싱 실패 %q: %w", key, origin, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return nil, fmt.Errorf("%s: http(s) 스킴 필요 %q", key, origin)
+		}
+		if u.Host == "" {
+			return nil, fmt.Errorf("%s: 호스트 없음 %q", key, origin)
+		}
+		if u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return nil, fmt.Errorf("%s: origin은 scheme://host[:port] 형식만 허용 %q", key, origin)
+		}
+		origins = append(origins, origin)
+	}
+	return origins, nil
 }
 
 func parseEnum(key, fallback string, allowed []string) (string, error) {

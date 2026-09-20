@@ -12,6 +12,7 @@ services:
     environment:
       TZ: Asia/Seoul
       GW_JWT_PUBLIC_KEY: ${GW_JWT_PUBLIC_KEY:-}
+      GW_CORS_ORIGINS: ${GW_CORS_ORIGINS:-}
     healthcheck:
       test: ["CMD", "/gateway", "-healthcheck"]
       interval: 10s

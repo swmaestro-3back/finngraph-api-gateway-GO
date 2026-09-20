@@ -16,6 +16,7 @@ services:
       GW_BACKEND_URL: ${GW_BACKEND_URL:?backend 사설 주소 필요 (.env 또는 셸/compose에 지정)}
       GW_KG_URL: ${GW_KG_URL:?kg 사설 주소 필요 (.env 또는 셸/compose에 지정)}
       GW_JWT_PUBLIC_KEY: ${GW_JWT_PUBLIC_KEY:-}
+      GW_CORS_ORIGINS: ${GW_CORS_ORIGINS:-}
     healthcheck:
       test: ["CMD", "/gateway", "-healthcheck"]
       interval: 10s
