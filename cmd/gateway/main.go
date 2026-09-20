@@ -82,10 +82,11 @@ func buildHandler(cfg *config.Config, logger *slog.Logger) http.Handler {
 		middleware.RealIP(cfg.TrustProxy, cfg.ClientIPSource)(
 			middleware.RequestID()(
 				middleware.AccessLog(logger)(
-					middleware.BodyLimit(1 << 20)(
-						middleware.RateLimit(cfg, logger, router.Classify)(
-							middleware.JWTAuth(cfg.JWTPublicKey, router.RequiresAuth)(
-								middleware.Deadline(cfg.UpstreamTimeout)(rt))))))))
+					middleware.CORS(cfg.CORSOrigins)(
+						middleware.BodyLimit(1 << 20)(
+							middleware.RateLimit(cfg, logger, router.Classify)(
+								middleware.JWTAuth(cfg.JWTPublicKey, router.RequiresAuth)(
+									middleware.Deadline(cfg.UpstreamTimeout)(rt)))))))))
 }
 
 func probeURL(listenAddr string) string {

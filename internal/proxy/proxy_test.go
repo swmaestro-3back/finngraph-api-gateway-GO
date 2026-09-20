@@ -201,7 +201,7 @@ func TestBackend_RewritesIdentityHeaders(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "/api/v1/themes", nil)
-	req.Host = "api.dev.finngraph.com"
+	req.Host = "api.example.com"
 	req.Header.Set("X-Forwarded-For", "9.9.9.9, 8.8.8.8")
 	req.Header.Set("X-Real-IP", "7.7.7.7")
 	req.Header.Set("CloudFront-Viewer-Address", "6.6.6.6:1234")
@@ -224,7 +224,7 @@ func TestBackend_RewritesIdentityHeaders(t *testing.T) {
 	if len(gotProto) != 1 || gotProto[0] != "https" {
 		t.Errorf("X-Forwarded-Proto = %v, want 통과 (신뢰 엣지가 설정)", gotProto)
 	}
-	if gotHost[0] != "api.dev.finngraph.com" {
+	if gotHost[0] != "api.example.com" {
 		t.Errorf("Host = %q, want 인바운드 보존", gotHost[0])
 	}
 }

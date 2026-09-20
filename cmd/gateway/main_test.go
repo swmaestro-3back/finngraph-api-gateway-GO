@@ -271,6 +271,86 @@ func TestStack_JWTEnforcedAtEdge(t *testing.T) {
 	})
 }
 
+func TestStack_CORS(t *testing.T) {
+	const origin = "https://app.example.com"
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var backendURI string
+	backendStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendURI = r.RequestURI
+		io.WriteString(w, `{"data":[]}`)
+	}))
+	t.Cleanup(backendStub.Close)
+
+	cfg := testConfig(t, backendStub.URL, backendStub.URL)
+	cfg.CORSOrigins = []string{origin}
+	cfg.JWTPublicKey = &key.PublicKey
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := buildHandler(cfg, logger)
+
+	corsHeadersPresent := func(t *testing.T, rec *httptest.ResponseRecorder) {
+		t.Helper()
+		if got := rec.Header().Get("Access-Control-Allow-Origin"); got != origin {
+			t.Errorf("Allow-Origin = %q, want %q", got, origin)
+		}
+		if rec.Header().Get("Access-Control-Allow-Credentials") != "true" {
+			t.Error("Allow-Credentials 부재")
+		}
+	}
+
+	t.Run("무토큰 401에도 CORS 헤더", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/me", nil)
+		req.Header.Set("Origin", origin)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 401 {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+		corsHeadersPresent(t, rec)
+		if !bytes.Contains(rec.Body.Bytes(), []byte(`"UNAUTHORIZED"`)) {
+			t.Errorf("body = %s", rec.Body.String())
+		}
+	})
+
+	t.Run("rate limit 429에도 CORS 헤더", func(t *testing.T) {
+		mint := func() *http.Request {
+			req := authReq()
+			req.Header.Set("Origin", origin)
+			return req
+		}
+		first := httptest.NewRecorder()
+		h.ServeHTTP(first, mint())
+		second := httptest.NewRecorder()
+		h.ServeHTTP(second, mint())
+		if second.Code != 429 {
+			t.Fatalf("2회차 = %d, want 429", second.Code)
+		}
+		corsHeadersPresent(t, second)
+	})
+
+	t.Run("preflight 204 backend 미도달", func(t *testing.T) {
+		backendURI = ""
+		req := httptest.NewRequest("OPTIONS", "/api/v1/auth/login", nil)
+		req.Header.Set("Origin", origin)
+		req.Header.Set("Access-Control-Request-Method", "POST")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 204 {
+			t.Fatalf("status = %d, want 204", rec.Code)
+		}
+		corsHeadersPresent(t, rec)
+		if rec.Header().Get("Access-Control-Allow-Methods") == "" {
+			t.Error("Allow-Methods 부재")
+		}
+		if backendURI != "" {
+			t.Errorf("backend에 %q 도달 — preflight 종결 실패", backendURI)
+		}
+	})
+}
+
 func TestProbeURL(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{":8080", "http://127.0.0.1:8080/healthz"},
