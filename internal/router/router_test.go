@@ -161,6 +161,26 @@ func TestRouter_FallbackReturns404(t *testing.T) {
 	}
 }
 
+func TestRequiresAuth(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"/api/v1/me", true},
+		{"/api/v1/me/nickname", true},
+		{"/api/v1/mefoo", false},
+		{"/api/v1/median", false},
+		{"/api/v1/themes", false},
+		{"/api/v1/auth/login", false},
+		{"/healthz", false},
+	} {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		if got := RequiresAuth(req); got != tc.want {
+			t.Errorf("RequiresAuth(%s) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
 func TestClassify(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string

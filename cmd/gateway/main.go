@@ -84,7 +84,8 @@ func buildHandler(cfg *config.Config, logger *slog.Logger) http.Handler {
 				middleware.AccessLog(logger)(
 					middleware.BodyLimit(1 << 20)(
 						middleware.RateLimit(cfg, logger, router.Classify)(
-							middleware.Deadline(cfg.UpstreamTimeout)(rt)))))))
+							middleware.JWTAuth(cfg.JWTPublicKey, router.RequiresAuth)(
+								middleware.Deadline(cfg.UpstreamTimeout)(rt))))))))
 }
 
 func probeURL(listenAddr string) string {

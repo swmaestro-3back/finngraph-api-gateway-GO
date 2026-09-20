@@ -37,6 +37,11 @@ func New(backend, kg, healthz http.Handler) http.Handler {
 	})
 }
 
+func RequiresAuth(r *http.Request) bool {
+	p := r.URL.EscapedPath()
+	return p == "/api/v1/me" || strings.HasPrefix(p, "/api/v1/me/")
+}
+
 func Classify(r *http.Request) middleware.Class {
 	p := r.URL.EscapedPath()
 	switch {

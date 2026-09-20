@@ -11,6 +11,7 @@ services:
         required: false
     environment:
       TZ: Asia/Seoul
+      GW_JWT_PUBLIC_KEY: ${GW_JWT_PUBLIC_KEY:-}
     healthcheck:
       test: ["CMD", "/gateway", "-healthcheck"]
       interval: 10s

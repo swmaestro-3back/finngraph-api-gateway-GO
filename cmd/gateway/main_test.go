@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/config"
 )
@@ -182,6 +187,88 @@ func TestStack_DeadlineCapsConnSlotWait(t *testing.T) {
 	if elapsed > 350*time.Millisecond {
 		t.Errorf("슬롯 대기 요청 소요 %v — 데드라인(200ms)이 대기를 못 끊음", elapsed)
 	}
+}
+
+func mintStackToken(t *testing.T, key *ecdsa.PrivateKey, exp time.Time) string {
+	t.Helper()
+	s, err := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.RegisteredClaims{
+		Subject:   "42",
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(exp),
+	}).SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestStack_JWTDisabledPassesProtectedPath(t *testing.T) {
+	h, backendURI, _ := newStack(t)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/me", nil))
+
+	if rec.Code != 200 || *backendURI != "/api/v1/me" {
+		t.Errorf("키 미설정: status=%d backendURI=%q, want 200 통과", rec.Code, *backendURI)
+	}
+}
+
+func TestStack_JWTEnforcedAtEdge(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backendURI, backendAuth string
+	backendStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendURI = r.RequestURI
+		backendAuth = r.Header.Get("Authorization")
+		io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(backendStub.Close)
+
+	cfg := testConfig(t, backendStub.URL, backendStub.URL)
+	cfg.JWTPublicKey = &key.PublicKey
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := buildHandler(cfg, logger)
+
+	t.Run("무토큰 → 401, backend 미도달", func(t *testing.T) {
+		backendURI = ""
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/me", nil))
+		if rec.Code != 401 || backendURI != "" {
+			t.Errorf("status=%d backendURI=%q, want 401 미도달", rec.Code, backendURI)
+		}
+	})
+
+	t.Run("만료 토큰 → 401 TOKEN_EXPIRED, 미도달", func(t *testing.T) {
+		backendURI = ""
+		req := httptest.NewRequest("GET", "/api/v1/me", nil)
+		req.Header.Set("Authorization", "Bearer "+mintStackToken(t, key, time.Now().Add(-time.Minute)))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 401 || !strings.Contains(rec.Body.String(), "TOKEN_EXPIRED") || backendURI != "" {
+			t.Errorf("status=%d body=%s backendURI=%q", rec.Code, rec.Body.String(), backendURI)
+		}
+	})
+
+	t.Run("유효 토큰 → 200, Authorization 원본 도달", func(t *testing.T) {
+		token := mintStackToken(t, key, time.Now().Add(30*time.Minute))
+		req := httptest.NewRequest("GET", "/api/v1/me", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 200 || backendAuth != "Bearer "+token {
+			t.Errorf("status=%d backendAuth 원본 불일치", rec.Code)
+		}
+	})
+
+	t.Run("비보호 경로 무토큰 → 200", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/themes", nil))
+		if rec.Code != 200 {
+			t.Errorf("status=%d, want 200", rec.Code)
+		}
+	})
 }
 
 func TestProbeURL(t *testing.T) {
