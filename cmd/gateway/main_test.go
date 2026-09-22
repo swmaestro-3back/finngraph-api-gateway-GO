@@ -288,7 +288,8 @@ func TestStack_CORS(t *testing.T) {
 	cfg := testConfig(t, backendStub.URL, backendStub.URL)
 	cfg.CORSOrigins = []string{origin}
 	cfg.JWTPublicKey = &key.PublicKey
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
 	h := buildHandler(cfg, logger)
 
 	corsHeadersPresent := func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -329,6 +330,23 @@ func TestStack_CORS(t *testing.T) {
 			t.Fatalf("2회차 = %d, want 429", second.Code)
 		}
 		corsHeadersPresent(t, second)
+	})
+
+	t.Run("비허용 origin 401은 cors_denied와 jwt 태그 모두 기록", func(t *testing.T) {
+		logBuf.Reset()
+		req := httptest.NewRequest("GET", "/api/v1/me", nil)
+		req.Header.Set("Origin", "https://evil.example")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 401 {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+		if rec.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Errorf("비허용인데 Allow-Origin 부착: %v", rec.Header())
+		}
+		if !bytes.Contains(logBuf.Bytes(), []byte(`"err":"cors_denied,jwt_missing"`)) {
+			t.Errorf("access log = %s", logBuf.String())
+		}
 	})
 
 	t.Run("preflight 204 backend 미도달", func(t *testing.T) {
