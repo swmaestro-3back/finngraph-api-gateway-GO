@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	corsAllowMethods = "GET, POST, PUT, DELETE, PATCH"
-	corsAllowHeaders = "Authorization, Content-Type"
-	corsMaxAge       = "600"
-	corsVaryActual   = "Origin"
-	corsVaryPrefligt = "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+	corsAllowMethods  = "GET, POST, PUT, DELETE, PATCH"
+	corsAllowHeaders  = "Authorization, Content-Type"
+	corsMaxAge        = "600"
+	corsVaryActual    = "Origin"
+	corsVaryPreflight = "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
 )
 
 func CORS(origins []string) func(http.Handler) http.Handler {
@@ -35,7 +35,7 @@ func CORS(origins []string) func(http.Handler) http.Handler {
 				r.Header.Get("Access-Control-Request-Method") != ""
 
 			if preflight {
-				w.Header().Set("Vary", corsVaryPrefligt)
+				w.Header().Set("Vary", corsVaryPreflight)
 				if ok {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Set("Access-Control-Allow-Credentials", "true")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 type tagKey struct{}
@@ -13,9 +14,20 @@ func WithTag(r *http.Request) *http.Request {
 }
 
 func SetTag(r *http.Request, tag string) {
-	if p, ok := r.Context().Value(tagKey{}).(*string); ok {
-		*p = tag
+	p, ok := r.Context().Value(tagKey{}).(*string)
+	if !ok {
+		return
 	}
+	if *p == "" {
+		*p = tag
+		return
+	}
+	for _, existing := range strings.Split(*p, ",") {
+		if existing == tag {
+			return
+		}
+	}
+	*p += "," + tag
 }
 
 func Tag(r *http.Request) string {

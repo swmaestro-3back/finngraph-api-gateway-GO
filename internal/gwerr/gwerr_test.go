@@ -19,6 +19,20 @@ func TestTag_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestTag_Accumulates(t *testing.T) {
+	r := WithTag(httptest.NewRequest("GET", "/", nil))
+
+	SetTag(r, "cors_denied")
+	SetTag(r, "jwt_missing")
+	if got := Tag(r); got != "cors_denied,jwt_missing" {
+		t.Errorf("Tag = %q, want cors_denied,jwt_missing", got)
+	}
+	SetTag(r, "jwt_missing")
+	if got := Tag(r); got != "cors_denied,jwt_missing" {
+		t.Errorf("중복 태그 후 Tag = %q, want 변화 없음", got)
+	}
+}
+
 func TestTag_WithoutHolderIsNoop(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 
