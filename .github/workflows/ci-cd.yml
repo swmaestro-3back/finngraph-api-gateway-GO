@@ -1,4 +1,4 @@
-name: ci
+name: ci-cd
 
 on:
   push:
@@ -26,3 +26,15 @@ jobs:
 
       - name: build
         run: CGO_ENABLED=0 go build -trimpath ./cmd/gateway
+
+  deliver:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    permissions:
+      contents: read
+      id-token: write
+    uses: swmaestro-3back/github-actions/.github/workflows/docker.delivery.yaml@main
+    with:
+      image_name: finngraph/api-gateway
+    secrets:
+      oidc_role_arn: ${{ secrets.OIDC_ROLE_ARN }}
