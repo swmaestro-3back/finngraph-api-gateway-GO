@@ -38,3 +38,20 @@ jobs:
       image_name: finngraph/api-gateway
     secrets:
       oidc_role_arn: ${{ secrets.OIDC_ROLE_ARN }}
+
+  deploy:
+    needs: deliver
+    permissions:
+      contents: read
+      id-token: write
+    uses: swmaestro-3back/github-actions/.github/workflows/ssm.deploy.yaml@main
+    with:
+      instance_id: ${{ secrets.DEPLOY_INSTANCE_ID }}
+      compose_dir: /home/ubuntu/finngraph-gateway
+      compose_file: docker-compose.prod.yml
+      service: gateway
+      image_env_var: GW_IMAGE
+      image: ${{ needs.deliver.outputs.image_ref }}
+      health_url: http://127.0.0.1:8090/healthz
+    secrets:
+      oidc_role_arn: ${{ secrets.OIDC_ROLE_ARN }}
