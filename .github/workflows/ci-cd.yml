@@ -50,7 +50,8 @@ jobs:
       compose_file: docker-compose.prod.yml
       service: gateway
       image_env_var: GW_IMAGE
-      image: ${{ needs.deliver.outputs.image_ref }}
+      image_name: finngraph/api-gateway
+      image_digest: ${{ needs.deliver.outputs.image_digest }}
       health_url: http://127.0.0.1:8090/healthz
     secrets:
       oidc_role_arn: ${{ secrets.OIDC_ROLE_ARN }}
