@@ -54,12 +54,17 @@ jobs:
           aws-region: ap-northeast-2
           mask-aws-account-id: true
 
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+
       - name: 배포
         uses: swmaestro-3back/github-actions/actions/ssm-deploy@main
         with:
           instance_id: ${{ secrets.DEPLOY_INSTANCE_ID }}
           compose_dir: /home/ubuntu/finngraph-gateway
-          compose_file: docker-compose.prod.yml
+          compose_file: compose.yaml
+          compose_source: deploy/dev/compose.yaml
           service: gateway
           image_env_var: GW_IMAGE
           image_name: finngraph/api-gateway

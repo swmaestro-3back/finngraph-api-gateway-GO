@@ -2,8 +2,8 @@ name: finngraph-gateway
 
 services:
   gateway:
-    build: .
-    image: ${GW_IMAGE:-finngraph-gateway:latest}
+    image: ${GW_IMAGE:?GW_IMAGE 를 .env 에 지정하세요}
+    platform: linux/arm64
     container_name: finngraph-gateway
     ports:
       - "${GW_BIND:-0.0.0.0:8090}:8080"
@@ -12,7 +12,7 @@ services:
         required: false
     environment:
       TZ: Asia/Seoul
-      GW_CLIENT_IP_SOURCE: (백엔드 개발자에게 연락)
+      GW_CLIENT_IP_SOURCE: ${GW_CLIENT_IP_SOURCE:-xff}
       GW_BACKEND_URL: ${GW_BACKEND_URL:?backend 사설 주소 필요 (.env 또는 셸/compose에 지정)}
       GW_KG_URL: ${GW_KG_URL:?kg 사설 주소 필요 (.env 또는 셸/compose에 지정)}
       GW_JWT_PUBLIC_KEY: ${GW_JWT_PUBLIC_KEY:-}
