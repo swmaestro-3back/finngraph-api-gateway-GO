@@ -4,9 +4,12 @@ on:
   push:
     branches: [main, develop]
   pull_request:
+  release:
+    types: [published]
 
 jobs:
   verify:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +32,7 @@ jobs:
 
   deliver:
     needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push'
     permissions:
       contents: read
       id-token: write
@@ -41,6 +44,7 @@ jobs:
 
   deploy:
     needs: deliver
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -69,4 +73,81 @@ jobs:
           image_env_var: GW_IMAGE
           image_name: finngraph/api-gateway
           image_digest: ${{ needs.deliver.outputs.image_digest }}
+          health_url: http://127.0.0.1:8090/healthz
+
+  release:
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-24.04-arm
+    environment: prod
+    concurrency:
+      group: release-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: main 포함 여부 확인
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...main" --jq .status)
+          case "$status" in
+            ahead|identical) ;;
+            *) echo "::error::릴리스 커밋이 main 에 없다 ($status)"; exit 1 ;;
+          esac
+
+      - name: AWS 자격 증명 설정
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+
+      - name: 커밋 태그
+        id: commit
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: 릴리스 태그 추가
+        id: tag
+        uses: swmaestro-3back/github-actions/actions/ecr-tag@main
+        with:
+          image_name: finngraph/api-gateway
+          source_tag: ${{ steps.commit.outputs.short_sha }}
+          tags: ${{ github.event.release.tag_name }}
+
+      - name: app-a 배포
+        uses: swmaestro-3back/github-actions/actions/ssm-deploy@main
+        with:
+          instance_id: ${{ secrets.DEPLOY_INSTANCE_ID_A }}
+          compose_dir: /home/ubuntu/finngraph-gateway
+          compose_file: compose.yaml
+          compose_source: deploy/prod/compose.yaml
+          env_ssm_prefix: /finngraph/prod/app/api-gateway
+          env_file: gateway.env
+          env_required_keys: GW_BACKEND_URL GW_KG_URL GW_REDIS_ADDR GW_CORS_ORIGINS GW_CLIENT_IP_SOURCE
+          service: gateway
+          image_env_var: GW_IMAGE
+          image_name: finngraph/api-gateway
+          image_digest: ${{ steps.tag.outputs.image_digest }}
+          health_url: http://127.0.0.1:8090/healthz
+
+      - name: app-b 배포
+        uses: swmaestro-3back/github-actions/actions/ssm-deploy@main
+        with:
+          instance_id: ${{ secrets.DEPLOY_INSTANCE_ID_B }}
+          compose_dir: /home/ubuntu/finngraph-gateway
+          compose_file: compose.yaml
+          compose_source: deploy/prod/compose.yaml
+          env_ssm_prefix: /finngraph/prod/app/api-gateway
+          env_file: gateway.env
+          env_required_keys: GW_BACKEND_URL GW_KG_URL GW_REDIS_ADDR GW_CORS_ORIGINS GW_CLIENT_IP_SOURCE
+          service: gateway
+          image_env_var: GW_IMAGE
+          image_name: finngraph/api-gateway
+          image_digest: ${{ steps.tag.outputs.image_digest }}
           health_url: http://127.0.0.1:8090/healthz

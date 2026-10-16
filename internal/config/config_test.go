@@ -40,6 +40,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.DialTimeout != 2*time.Second {
 		t.Errorf("DialTimeout = %v, want 2s", cfg.DialTimeout)
 	}
+	if cfg.ShutdownDelay != 0 {
+		t.Errorf("ShutdownDelay = %v, want 0 (미설정 = 대기 없음)", cfg.ShutdownDelay)
+	}
 	if cfg.MaxConnsPerHost != 64 {
 		t.Errorf("MaxConnsPerHost = %d, want 64", cfg.MaxConnsPerHost)
 	}
@@ -207,6 +210,7 @@ func TestLoad_Overrides(t *testing.T) {
 	t.Setenv("GW_KG_URL", "http://localhost:8000")
 	t.Setenv("GW_UPSTREAM_TIMEOUT", "3s")
 	t.Setenv("GW_UPSTREAM_DIAL_TIMEOUT", "500ms")
+	t.Setenv("GW_SHUTDOWN_DELAY", "25s")
 	t.Setenv("GW_UPSTREAM_MAX_CONNS", "16")
 	t.Setenv("GW_RATE_GENERAL_RPS", "100")
 	t.Setenv("GW_RATE_GENERAL_BURST", "200")
@@ -230,6 +234,9 @@ func TestLoad_Overrides(t *testing.T) {
 	if cfg.DialTimeout != 500*time.Millisecond {
 		t.Errorf("DialTimeout = %v, want 500ms", cfg.DialTimeout)
 	}
+	if cfg.ShutdownDelay != 25*time.Second {
+		t.Errorf("ShutdownDelay = %v, want 25s", cfg.ShutdownDelay)
+	}
 	if cfg.MaxConnsPerHost != 16 {
 		t.Errorf("MaxConnsPerHost = %d, want 16", cfg.MaxConnsPerHost)
 	}
@@ -252,6 +259,7 @@ func TestLoad_FailClosed(t *testing.T) {
 		{"GW_UPSTREAM_TIMEOUT", "eight seconds"},
 		{"GW_UPSTREAM_TIMEOUT", "-1s"},
 		{"GW_UPSTREAM_DIAL_TIMEOUT", "0"},
+		{"GW_SHUTDOWN_DELAY", "soon"},
 		{"GW_UPSTREAM_MAX_CONNS", "0"},
 		{"GW_UPSTREAM_MAX_CONNS", "-5"},
 		{"GW_RATE_GENERAL_RPS", "-1"},

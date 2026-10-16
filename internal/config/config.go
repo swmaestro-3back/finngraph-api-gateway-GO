@@ -31,6 +31,7 @@ type Config struct {
 	JWTPublicKey     *ecdsa.PublicKey
 	CORSOrigins      []string
 	LogLevel         slog.Level
+	ShutdownDelay    time.Duration
 }
 
 func Load() (*Config, error) {
@@ -81,6 +82,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.LogLevel, err = parseLogLevel("GW_LOG_LEVEL", slog.LevelInfo); err != nil {
+		return nil, err
+	}
+	if cfg.ShutdownDelay, err = parseDuration("GW_SHUTDOWN_DELAY", 0); err != nil {
 		return nil, err
 	}
 	return cfg, nil
