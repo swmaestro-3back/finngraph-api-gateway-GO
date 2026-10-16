@@ -1,0 +1,31 @@
+name: finngraph-gateway
+
+services:
+  gateway:
+    build: .
+    ports:
+      - "127.0.0.1:8090:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: Asia/Seoul
+      GW_BACKEND_URL: http://backend:8080
+      GW_KG_URL: http://ai:8000
+      GW_REDIS_ADDR: redis:6379
+      GW_CLIENT_IP_SOURCE: socket
+      GW_JWT_PUBLIC_KEY: ${GW_JWT_PUBLIC_KEY:-}
+      GW_CORS_ORIGINS: ${GW_CORS_ORIGINS:-http://localhost:5173}
+    healthcheck:
+      test: ["CMD", "/gateway", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    stop_grace_period: 15s

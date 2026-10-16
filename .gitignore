@@ -15,6 +15,7 @@ go.work
 go.work.sum
 
 vendor/
+scripts/
 
 .env
 .env.local
@@ -27,3 +28,8 @@ docs/
 
 scripts/load/results/
 *.summary.json
+
+# Agent session data
+.omc/
+.claude/
+CLAUDE.md
