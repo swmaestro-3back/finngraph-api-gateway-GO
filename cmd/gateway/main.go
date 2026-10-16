@@ -40,9 +40,10 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 
+	hc := health.New()
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           buildHandler(cfg, logger),
+		Handler:           buildHandler(cfg, logger, hc),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      12 * time.Second,
@@ -52,16 +53,27 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	serveFailed := make(chan struct{})
 	go func() {
 		logger.Info("gateway listening", "addr", cfg.ListenAddr,
 			"backend", cfg.BackendURL.String(), "kg", cfg.KGURL.String())
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server failed", "err", err.Error())
-			stop()
+			close(serveFailed)
 		}
 	}()
 
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+		stop()
+		hc.Drain()
+		if cfg.ShutdownDelay > 0 {
+			logger.Info("draining", "delay", cfg.ShutdownDelay.String())
+			time.Sleep(cfg.ShutdownDelay)
+		}
+	case <-serveFailed:
+	}
+
 	logger.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -70,12 +82,12 @@ func main() {
 	}
 }
 
-func buildHandler(cfg *config.Config, logger *slog.Logger) http.Handler {
+func buildHandler(cfg *config.Config, logger *slog.Logger, hc *health.Health) http.Handler {
 	tr := proxy.NewTransport(cfg)
 	rt := router.New(
 		proxy.New(cfg.BackendURL, tr, logger, middleware.ClientIP),
 		proxy.NewKG(cfg.KGURL, tr, logger, middleware.ClientIP),
-		health.Handler(),
+		hc.Handler(),
 	)
 
 	return middleware.Recover(logger)(

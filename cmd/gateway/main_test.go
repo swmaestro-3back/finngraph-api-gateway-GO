@@ -17,6 +17,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/config"
+	"github.com/swmaestro-3back/finngraph-api-gateway-GO/internal/health"
 )
 
 func testConfig(t *testing.T, backend, kg string) *config.Config {
@@ -60,13 +61,26 @@ func newStack(t *testing.T) (http.Handler, *string, *string) {
 	t.Cleanup(kgStub.Close)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := buildHandler(testConfig(t, backendStub.URL, kgStub.URL), logger)
+	h := buildHandler(testConfig(t, backendStub.URL, kgStub.URL), logger, health.New())
 	return h, &backendURI, &kgURI
+}
+
+func TestStack_HealthzDrainingReturns503(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	hc := health.New()
+	h := buildHandler(testConfig(t, "http://127.0.0.1:1", "http://127.0.0.1:1"), logger, hc)
+	hc.Drain()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
+	if rec.Code != 503 {
+		t.Errorf("/healthz = %d, want 503 (종료 대기 중)", rec.Code)
+	}
 }
 
 func TestStack_HealthzAliveWithoutUpstreams(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := buildHandler(testConfig(t, "http://127.0.0.1:1", "http://127.0.0.1:1"), logger)
+	h := buildHandler(testConfig(t, "http://127.0.0.1:1", "http://127.0.0.1:1"), logger, health.New())
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
@@ -169,7 +183,7 @@ func TestStack_DeadlineCapsConnSlotWait(t *testing.T) {
 	cfg.UpstreamTimeout = 200 * time.Millisecond
 	cfg.MaxConnsPerHost = 1
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := buildHandler(cfg, logger)
+	h := buildHandler(cfg, logger, health.New())
 
 	go func() {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/v1/themes", nil))
@@ -229,7 +243,7 @@ func TestStack_JWTEnforcedAtEdge(t *testing.T) {
 	cfg := testConfig(t, backendStub.URL, backendStub.URL)
 	cfg.JWTPublicKey = &key.PublicKey
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := buildHandler(cfg, logger)
+	h := buildHandler(cfg, logger, health.New())
 
 	t.Run("무토큰 → 401, backend 미도달", func(t *testing.T) {
 		backendURI = ""
@@ -290,7 +304,7 @@ func TestStack_CORS(t *testing.T) {
 	cfg.JWTPublicKey = &key.PublicKey
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
-	h := buildHandler(cfg, logger)
+	h := buildHandler(cfg, logger, health.New())
 
 	corsHeadersPresent := func(t *testing.T, rec *httptest.ResponseRecorder) {
 		t.Helper()
