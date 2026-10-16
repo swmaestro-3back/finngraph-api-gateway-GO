@@ -1,0 +1,41 @@
+name: finngraph-gateway
+
+services:
+  gateway:
+    image: ${GW_IMAGE:?GW_IMAGE 를 .env 에 지정하세요}
+    platform: linux/arm64
+    container_name: finngraph-gateway
+    ports:
+      - "8090:8080"
+    env_file:
+      - path: gateway.env
+        required: true
+    environment:
+      TZ: Asia/Seoul
+      GW_SHUTDOWN_DELAY: 25s
+      GOMEMLIMIT: 200MiB
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "/gateway", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    stop_grace_period: 45s
