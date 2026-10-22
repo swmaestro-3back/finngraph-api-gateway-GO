@@ -24,9 +24,12 @@ services:
       retries: 3
       start_period: 5s
     logging:
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: ap-northeast-2
+        awslogs-group: /finngraph/dev/api-gateway
+        tag: "{{.Name}}/{{.ID}}"
+        mode: non-blocking
+        max-buffer-size: 4m
     restart: unless-stopped
     stop_grace_period: 15s
